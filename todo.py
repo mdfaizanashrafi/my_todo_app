@@ -1,4 +1,6 @@
 import json, sqlite3
+import tkinter as tk
+from tkinter import ttk, messagebox
 from colorama import Fore, Style, init
 
 init(autoreset=True)
@@ -39,116 +41,92 @@ def save_tasks(tasks):
         json.dump(tasks, file, indent=4)
 
 #Add new tasks
-def add_task(task_name):
-    due_date = input("Enter due date (YYYY-MM-DD) or leave blank: ")
-    priority= input("Enter priority (1-5, default 3): ") or "3"
-    try:
-        priority = int(priority)
-        if not (1<=priority<=5):
-            raise ValueError
-    except ValueError:
-        print(Fore.RED + "Invalid priority. Defaulting to 3.")
-        priority = 3
+def add_task():
+    task_name= task_entry.get()
+    due_date= due_date_entry.get()
+    priority= priority_var.get() or "3"
 
+    if not task_name:
+        messagebox.showerror("Error","Task cannot be empty!")
+        return
+    
     with sqlite3.connect(DB_FILE) as conn:
-        cursor= conn.cursor()
-        cursor.execute("INSERT INTO tasks (task, due_date, priority) VALUES (?,?,?)", (task_name,due_date,priority))
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO tasks (task, due_date, priority) VALUES (?, ?, ?)", (task_name, due_date, priority))
         conn.commit()
-        
-    print(f"✅ Task added: {task_name} | Due: {due_date or 'No Due Date'} | Priority: {priority}")
-
+    
+    task_entry.delete(0,tk.END)
+    due_date_entry.delete(0,tk.END)
+    list_tasks()
 
 def list_tasks():
+    tasks_list.delete(0,tk.END)  #clears the listbox first
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory =sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT id, task, completed, due_date, priority FROM tasks ORDER BY priority DESC")
         tasks = cursor.fetchall()
 
-    if not tasks:
-        print(Fore.YELLOW + "📭 No tasks found.")
-        return
-    
-    print("\n 📋 Your To-Do List: \n ")
     for task in tasks:
-        status= Fore.GREEN + "✅" if task["completed"] else Fore.RED + "❌"
-        due_info = f"🗓️ {task['due_date']}" if task["due_date"] else ""
-        print(f"{task['id']}. {status} {task['task']} {due_info}  🔥 Priority: {task['priority']}")
+        status="✅" if task[2] else "❌"
+        due_info = f"🗓️ {task[3]}" if task[3] else ""
+        tasks_list.insert(tk.END, f"{task[0]}. {status} {task[1]} {due_info} 🔥 Priority: {task[4]}")
 
 #Mark Completed:
 def mark_completed():
-    list_tasks()
-    try:
-        task_no= int(input(Fore.GREEN + "Enter the task number to mark as completed: "))
-    except ValueError:
-        print(Fore.RED + "Invalid task number.")
-        return
-
+    selected_task=tasks_list.curselection()
+    if not selected_task:
+        messagebox.showerror("Error","Select a task first!")
+    
+    task_id = tasks_list.get(selected_task).split(".")[0]
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE tasks SET completed = 1 WHERE id = ?", (task_no,))
-        if cursor.rowcount == 0:
-            print(Fore.RED + "Task not found.")
-            return
-        else:
-            conn.commit()
-            print(f"🎉 Task {task_no} marked as completed.")
+        cursor.execute("UPDATE tasks SET completed = 1 WHERE id = ?", (task_id,))
+        conn.commit()
+
+    list_tasks()
 
 #Delete tasks:
 def delete_task():
-    list_tasks()
-    try:
-        task_no= int(input(Fore.RED + "Enter the task number to delete: "))
-    except ValueError:
-        print(Fore.RED + "Invalid task number.")
+    selected_task=tasks_list.curselection()
+    if not selected_task:
+        messagebox.showerror("Error","Select a task first!")
         return
     
+    task_id = tasks_list.get(selected_task).split(".")[0]
     with sqlite3.connect(DB_FILE) as conn:
         cursor= conn.cursor()
-        cursor.execute("DELETE FROM tasks WHERE id = ?",(task_no,))
-        if cursor.rowcount == 0:
-            print(Fore.RED + "Task not found.")
-        else:
-            conn.commit()
-            print(f"🗑️ Task {task_no} deleted.")
+        cursor.execute("DELETE FROM tasks WHERE id = ?",(task_id,))
+        conn.commit()
+        
+    list_tasks()
 
 
 #Main Program
 
-if __name__ == "__main__":
-    connect_db()
+root= tk.Tk()
+root.title("📝 To-Do List App")
 
-    while True:
-        print(Fore.YELLOW + "\n 📌 To-Do List Menu")
-        print(Fore.BLUE + "1. Add Task")
-        print(Fore.BLUE + "2. List Tasks")
-        print(Fore.BLUE + "3. Mark Task as Completed")
-        print(Fore.BLUE + "4. Delete Task")
-        print(Fore.RED + "5. Exit")
+#tasak input fields
+task_entry= tk.Entry(root,width=40)
+task_entry.pack(pady=5)
 
-        choice = input(Fore.YELLOW + "Enter an option:")
+due_date_entry=tk.Entry(root,width=20)
+due_date_entry.pack(pady=5)
 
-        if choice == "1":
-            task = input(Fore.GREEN + "Enter a new Task:")
-            add_task(task)
+priority_var= tk.Entry(root,width=10)
+priority_var.pack(pady=5)
 
-        elif choice =="2":
-            list_tasks()
-        elif choice == "3":
-            list_tasks()
-            task_no = int(input(Fore.GREEN + "Enter the task number to mark as completed:")) 
-            mark_completed()
-        elif choice == "4":
-            list_tasks()
-            task_no= int(input(Fore.RED + "Enter the task number to delete:"))
+#task listbox
+tasks_list=tk.Listbox(root,width=60,height= 10, font=("Arial", 12))
+tasks_list.pack(pady=5)
 
-            delete_task()
+#buttons:
+tk.Button(root,text="➕ Add Task",command=add_task).pack(pady=2)
+tk.Button(root,text="✅ Mark Completed",command=mark_completed).pack(pady=2)
+tk.Button(root,text="🗑️ Delete Task",command=delete_task).pack(pady=2)
 
-        elif choice == "5":
-            print(Fore.MAGENTA + "👋Goodbye!")
-            break
-        else:
-            print(Fore.RED + "Invalid choice. Please try again.")
-
+list_tasks()
+root.mainloop() #starts the GUI loop
 
 
